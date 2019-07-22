@@ -304,7 +304,7 @@ static int vmmouse_enable(struct psmouse *psmouse)
 	VMMOUSE_CMD(ABSPOINTER_RESTRICT, VMMOUSE_RESTRICT_CPL0,
 		    dummy1, dummy2, dummy3, dummy4);
 
-	VMMOUSE_CMD(ABSPOINTER_COMMAND, VMMOUSE_CMD_REQUEST_ABSOLUTE,
+	VMMOUSE_CMD(ABSPOINTER_COMMAND, VMMOUSE_CMD_REQUEST_RELATIVE,
 		    dummy1, dummy2, dummy3, dummy4);
 
 	return 0;
