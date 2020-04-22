@@ -59,6 +59,7 @@
  */
 void i915_detect_vgpu(struct drm_i915_private *dev_priv)
 {
+        DRM_INFO("[Trace] Enter i915_detect_vgpu.");
 	struct pci_dev *pdev = dev_priv->drm.pdev;
 	u64 magic;
 	u16 version_major;
@@ -72,8 +73,10 @@ void i915_detect_vgpu(struct drm_i915_private *dev_priv)
 	 * we do not support VGT on older gens, return early so we don't have
 	 * to consider differently numbered or sized MMIO bars
 	 */
-	if (INTEL_GEN(dev_priv) < 6)
+	if (INTEL_GEN(dev_priv) < 6) {
+                DRM_INFO("Virtual GPU is not supported before Gen6");
 		return;
+        }
 
 	shared_area = pci_iomap_range(pdev, 0, VGT_PVINFO_PAGE, VGT_PVINFO_SIZE);
 	if (!shared_area) {
