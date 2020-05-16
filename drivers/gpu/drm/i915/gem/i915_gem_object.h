@@ -39,6 +39,10 @@ void __i915_gem_object_release_shmem(struct drm_i915_gem_object *obj,
 
 int i915_gem_object_attach_phys(struct drm_i915_gem_object *obj, int align);
 
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+int i915_gem_open_object(struct drm_gem_object *gem, struct drm_file *file);
+#endif
+
 void i915_gem_close_object(struct drm_gem_object *gem, struct drm_file *file);
 void i915_gem_free_object(struct drm_gem_object *obj);
 

@@ -66,6 +66,14 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 	obj->mm.madv = I915_MADV_WILLNEED;
 	INIT_RADIX_TREE(&obj->mm.get_page.radix, GFP_KERNEL | __GFP_NOWARN);
 	mutex_init(&obj->mm.get_page.lock);
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+	/*
+         * Mark the object as not having backing pages, as no allocation
+         * for it yet
+         */
+	obj->has_backing_pages = 0;
+	INIT_LIST_HEAD(&obj->pid_info);
+#endif
 }
 
 /**
@@ -192,6 +200,17 @@ static void __i915_gem_free_objects(struct drm_i915_private *i915,
 
 		if (obj->base.import_attach)
 			drm_prime_gem_destroy(&obj->base, NULL);
+
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+		if (!obj->stolen && (obj->has_backing_pages == 1)) {
+			struct drm_i915_private *dev_priv =
+				obj->base.dev->dev_private;
+
+			dev_priv->mm.phys_mem_total -= obj->base.size;
+			obj->has_backing_pages = 0;
+		}
+		i915_gem_obj_remove_all_pids(obj);
+#endif
 
 		drm_gem_free_mmap_offset(&obj->base);
 

@@ -59,10 +59,16 @@ int drm_prime_fd_to_handle_ioctl(struct drm_device *dev, void *data,
 
 void drm_prime_init_file_private(struct drm_prime_file_private *prime_fpriv);
 void drm_prime_destroy_file_private(struct drm_prime_file_private *prime_fpriv);
-void drm_prime_remove_buf_handle_locked(struct drm_prime_file_private *prime_fpriv,
-					struct dma_buf *dma_buf);
+void drm_prime_remove_buf_handle_locked(
+	struct drm_prime_file_private *prime_fpriv, struct dma_buf *dma_buf);
 
 /* drm_drv.c */
+
+#if IS_ENABLED(CONFIG_DRM_I915_MEMTRACK)
+#define DRM_MAGIC_HASH_ORDER                                                   \
+	4 /**< Size of key hash table. Must be power of 2. */
+#endif
+
 struct drm_minor *drm_minor_acquire(unsigned int minor_id);
 void drm_minor_release(struct drm_minor *minor);
 
