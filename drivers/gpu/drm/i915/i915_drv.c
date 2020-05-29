@@ -1506,6 +1506,7 @@ static void i915_driver_destroy(struct drm_i915_private *i915)
  */
 int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
+        DRM_INFO("[Trace] enter i915_driver_probe");
 	const struct intel_device_info *match_info =
 		(struct intel_device_info *)ent->driver_data;
 	struct drm_i915_private *dev_priv;
@@ -1546,6 +1547,7 @@ int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	disable_rpm_wakeref_asserts(&dev_priv->runtime_pm);
 
+        DRM_INFO("[Trace] Invoking i915_detect_vgpu.");
 	i915_detect_vgpu(dev_priv);
 
 	ret = i915_driver_mmio_probe(dev_priv);
