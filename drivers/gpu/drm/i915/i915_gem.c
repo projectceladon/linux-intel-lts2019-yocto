@@ -412,7 +412,7 @@ static void i915_obj_pidarray_validate(struct drm_gem_object *gem_obj)
 					DRM_DEBUG("stale_addr=%ld\n",
 						  virt_entry->user_virt_addr);
 					list_del(&virt_entry->head);
-					kfree(virt_entry);
+				kfree(virt_entry);
 				}
 			}
 			put_task_struct(task);
@@ -475,6 +475,9 @@ static int i915_obj_shared_count(struct drm_i915_gem_object *obj,
 
 	list_for_each_entry (pid_info_entry, &obj->pid_info, head)
 		obj_shared_count++;
+
+        if (WARN_ON(obj_shared_count == 0))
+		return -EINVAL;
 
 	return obj_shared_count;
 }
