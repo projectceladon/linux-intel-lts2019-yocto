@@ -613,6 +613,8 @@ typedef struct drm_i915_irq_wait {
 #define I915_PARAM_HAS_EXEC_SUBMIT_FENCE 53
 /* Must be kept compact -- no holes and well documented */
 
+#define I915_PARAM_IS_GVT	55
+
 typedef struct drm_i915_getparam {
 	__s32 param;
 	/*
