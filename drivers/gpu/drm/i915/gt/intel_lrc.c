@@ -142,6 +142,7 @@
 #include "intel_engine_pm.h"
 #include "intel_gt.h"
 #include "intel_gt_pm.h"
+#include "intel_gt_requests.h"
 #include "intel_lrc_reg.h"
 #include "intel_mocs.h"
 #include "intel_reset.h"
@@ -1154,6 +1155,14 @@ __execlists_schedule_out(struct i915_request *rq,
 {
 	struct intel_context * const ce = rq->hw_context;
 
+	/*
+	 * If we have just completed this context, the engine may now be
+	 * idle and we want to re-enter powersaving.
+	 */
+	if (list_is_last(&rq->link, &ce->timeline->requests) &&
+	    i915_request_completed(rq))
+		intel_engine_add_retire(engine, ce->timeline);
+
 	intel_engine_context_out(engine);
 	execlists_context_status_change(rq, INTEL_CONTEXT_SCHEDULE_OUT);
 	intel_gt_pm_put(engine->gt);
@@ -1341,8 +1350,6 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 {
 	struct intel_engine_execlists *execlists = &engine->execlists;
 	unsigned int n;
-	u32 descs[4];
-	int i = 0;
 
 	GEM_BUG_ON(!assert_pending_valid(execlists, "submit"));
 
@@ -1364,32 +1371,12 @@ static void execlists_submit_ports(struct intel_engine_cs *engine)
 	 */
 	for (n = execlists_num_ports(execlists); n--; ) {
 		struct i915_request *rq = execlists->pending[n];
-		u64 desc;
 
-		desc = rq ? execlists_update_context(rq) : 0;
-
-		if (intel_vgpu_active(engine->i915) &&
-				PVMMIO_LEVEL(engine->i915, PVMMIO_ELSP_SUBMIT)) {
-			BUG_ON(i >= 4);
-			descs[i] = upper_32_bits(desc);
-			descs[i + 1] = lower_32_bits(desc);
-			i += 2;
-			continue;
-		}
-
-		write_desc(execlists, desc, n);
+		write_desc(execlists,
+			   rq ? execlists_update_context(rq) : 0,
+			   n);
 	}
 
-	if (intel_vgpu_active(engine->i915) &&
-			PVMMIO_LEVEL(engine->i915, PVMMIO_ELSP_SUBMIT)) {
-		u32 __iomem *elsp_data = engine->i915->shared_page->elsp_data;
-		spin_lock(&engine->i915->shared_page_lock);
-		writel(descs[0], elsp_data);
-		writel(descs[1], elsp_data + 1);
-		writel(descs[2], elsp_data + 2);
-		writel(descs[3], execlists->submit_reg);
-		spin_unlock(&engine->i915->shared_page_lock);
-	}
 	/* we need to manually load the submit queue */
 	if (execlists->ctrl_reg)
 		writel(EL_CTRL_LOAD, execlists->ctrl_reg);
