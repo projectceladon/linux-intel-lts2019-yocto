@@ -28,13 +28,13 @@
 
 #include "i915_drv.h"
 
-#include "gt/intel_gt.h"
-
+#include "intel_context.h"
 #include "intel_engine.h"
 #include "intel_engine_pm.h"
 #include "intel_engine_pool.h"
 #include "intel_engine_user.h"
-#include "intel_context.h"
+#include "intel_gt.h"
+#include "intel_gt_requests.h"
 #include "intel_lrc.h"
 #include "intel_reset.h"
 #include "intel_ring.h"
@@ -616,6 +616,7 @@ static int intel_engine_setup_common(struct intel_engine_cs *engine)
 	intel_engine_init_execlists(engine);
 	intel_engine_init_cmd_parser(engine);
 	intel_engine_init__pm(engine);
+	intel_engine_init_retire(engine);
 
 	intel_engine_pool_init(&engine->pool);
 
@@ -838,6 +839,7 @@ void intel_engine_cleanup_common(struct intel_engine_cs *engine)
 
 	cleanup_status_page(engine);
 
+	intel_engine_fini_retire(engine);
 	intel_engine_pool_fini(&engine->pool);
 	intel_engine_fini_breadcrumbs(engine);
 	intel_engine_cleanup_cmd_parser(engine);
@@ -909,7 +911,7 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 	if (INTEL_GEN(engine->i915) < 3)
 		return -ENODEV;
 
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	intel_uncore_write_fw(uncore, mode, _MASKED_BIT_ENABLE(STOP_RING));
 
@@ -918,7 +920,7 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 					 mode, MODE_IDLE, MODE_IDLE,
 					 1000, stop_timeout(engine),
 					 NULL)) {
-		GEM_TRACE("%s: timed out on STOP_RING -> IDLE\n", engine->name);
+		ENGINE_TRACE(engine, "timed out on STOP_RING -> IDLE\n");
 		err = -ETIMEDOUT;
 	}
 
@@ -930,7 +932,7 @@ int intel_engine_stop_cs(struct intel_engine_cs *engine)
 
 void intel_engine_cancel_stop_cs(struct intel_engine_cs *engine)
 {
-	GEM_TRACE("%s\n", engine->name);
+	ENGINE_TRACE(engine, "\n");
 
 	ENGINE_WRITE_FW(engine, RING_MI_MODE, _MASKED_BIT_DISABLE(STOP_RING));
 }
@@ -1539,58 +1541,6 @@ void intel_engine_dump(struct intel_engine_cs *engine,
 	intel_engine_print_breadcrumbs(engine, m);
 }
 
-/**
- * intel_enable_engine_stats() - Enable engine busy tracking on engine
- * @engine: engine to enable stats collection
- *
- * Start collecting the engine busyness data for @engine.
- *
- * Returns 0 on success or a negative error code.
- */
-int intel_enable_engine_stats(struct intel_engine_cs *engine)
-{
-	struct intel_engine_execlists *execlists = &engine->execlists;
-	unsigned long flags;
-	int err = 0;
-
-	if (!intel_engine_supports_stats(engine))
-		return -ENODEV;
-
-	execlists_active_lock_bh(execlists);
-	write_seqlock_irqsave(&engine->stats.lock, flags);
-
-	if (unlikely(engine->stats.enabled == ~0)) {
-		err = -EBUSY;
-		goto unlock;
-	}
-
-	if (engine->stats.enabled++ == 0) {
-		struct i915_request * const *port;
-		struct i915_request *rq;
-
-		engine->stats.enabled_at = ktime_get();
-
-		/* XXX submission method oblivious? */
-		for (port = execlists->active; (rq = *port); port++)
-			engine->stats.active++;
-
-		for (port = execlists->pending; (rq = *port); port++) {
-			/* Exclude any contexts already counted in active */
-			if (!intel_context_inflight_count(rq->hw_context))
-				engine->stats.active++;
-		}
-
-		if (engine->stats.active)
-			engine->stats.start = engine->stats.enabled_at;
-	}
-
-unlock:
-	write_sequnlock_irqrestore(&engine->stats.lock, flags);
-	execlists_active_unlock_bh(execlists);
-
-	return err;
-}
-
 static ktime_t __intel_engine_get_busy_time(struct intel_engine_cs *engine)
 {
 	ktime_t total = engine->stats.total;
@@ -1599,7 +1549,7 @@ static ktime_t __intel_engine_get_busy_time(struct intel_engine_cs *engine)
 	 * If the engine is executing something at the moment
 	 * add it to the total.
 	 */
-	if (engine->stats.active)
+	if (atomic_read(&engine->stats.active))
 		total = ktime_add(total,
 				  ktime_sub(ktime_get(), engine->stats.start));
 
@@ -1623,28 +1573,6 @@ ktime_t intel_engine_get_busy_time(struct intel_engine_cs *engine)
 	} while (read_seqretry(&engine->stats.lock, seq));
 
 	return total;
-}
-
-/**
- * intel_disable_engine_stats() - Disable engine busy tracking on engine
- * @engine: engine to disable stats collection
- *
- * Stops collecting the engine busyness data for @engine.
- */
-void intel_disable_engine_stats(struct intel_engine_cs *engine)
-{
-	unsigned long flags;
-
-	if (!intel_engine_supports_stats(engine))
-		return;
-
-	write_seqlock_irqsave(&engine->stats.lock, flags);
-	WARN_ON_ONCE(engine->stats.enabled == 0);
-	if (--engine->stats.enabled == 0) {
-		engine->stats.total = __intel_engine_get_busy_time(engine);
-		engine->stats.active = 0;
-	}
-	write_sequnlock_irqrestore(&engine->stats.lock, flags);
 }
 
 static bool match_ring(struct i915_request *rq)

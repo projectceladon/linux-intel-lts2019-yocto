@@ -451,6 +451,14 @@ struct intel_engine_cs {
 
 	struct intel_engine_execlists execlists;
 
+	/*
+	 * Keep track of completed timelines on this engine for early
+	 * retirement with the goal of quickly enabling powersaving as
+	 * soon as the engine is idle.
+	 */
+	struct intel_timeline *retire;
+	struct work_struct retire_work;
+
 	/* status_notifier: list of callbacks for context-switch changes */
 	struct atomic_notifier_head context_status_notifier;
 
@@ -490,28 +498,17 @@ struct intel_engine_cs {
 	u32 (*get_cmd_length_mask)(u32 cmd_header);
 
 	struct {
-		/**
-		 * @lock: Lock protecting the below fields.
-		 */
-		seqlock_t lock;
-		/**
-		 * @enabled: Reference count indicating number of listeners.
-		 */
 		unsigned int enabled;
 		/**
 		 * @active: Number of contexts currently scheduled in.
 		 */
-		unsigned int active;
+		atomic_t active;
+
 		/**
-		 * @enabled_at: Timestamp when busy stats were enabled.
-		 */
-		ktime_t enabled_at;
-		/**
-		 * @start: Timestamp of the last idle to active transition.
-		 *
-		 * Idle is defined as active == 0, active is active > 0.
-		 */
-		ktime_t start;
+		 * @lock: Lock protecting the below fields.
+		*/
+		seqlock_t lock;
+
 		/**
 		 * @total: Total time this engine was busy.
 		 *
@@ -519,6 +516,19 @@ struct intel_engine_cs {
 		 * where engine is currently busy (active > 0).
 		 */
 		ktime_t total;
+
+		/**
+		 * @start: Timestamp of the last idle to active transition.
+		 *
+		 * Idle is defined as active == 0, active is active > 0.
+		*/
+		ktime_t start;
+
+		/**
+		 * @rps: Utilisation at last RPS sampling.
+		 */
+		ktime_t rps;
+
 	} stats;
 
 	struct {
