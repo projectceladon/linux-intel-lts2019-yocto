@@ -1501,7 +1501,7 @@ static void uvc_video_complete(struct urb *urb)
 	struct uvc_buffer *buf_meta = NULL;
 	unsigned long flags;
 	int ret;
-
+printk(KERN_ERR, "Shiva video complete called \n");
 	switch (urb->status) {
 	case 0:
 		break;
@@ -1544,10 +1544,12 @@ static void uvc_video_complete(struct urb *urb)
 	/* If no async work is needed, resubmit the URB immediately. */
 	if (!uvc_urb->async_operations) {
 		ret = usb_submit_urb(uvc_urb->urb, GFP_ATOMIC);
-		if (ret < 0)
+		if (ret < 0) {
 			uvc_printk(KERN_ERR,
-				   "Failed to resubmit video URB (%d).\n",
+				   "Shiva Failed to resubmit video URB (%d).\n",
 				   ret);
+uvc_video_stop_transfer(stream, 1);
+                }
 		return;
 	}
 
